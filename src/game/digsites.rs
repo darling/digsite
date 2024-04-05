@@ -160,7 +160,7 @@ impl DigSite {
 
             let cell_count = Size::from(bone_cell_area).count();
 
-            let bca_normal = bone_cell_area.normalized();
+            let bca_normal = bone_cell_area.normalize();
 
             for pos in 0..cell_count {
                 let local_point = bca_normal.point_from_pos(pos);

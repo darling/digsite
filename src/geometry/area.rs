@@ -33,7 +33,7 @@ impl Area {
         p.x >= min.x && p.x <= max.x && p.y >= min.y && p.y <= max.y
     }
 
-    pub fn normalized(&self) -> Area {
+    pub fn normalize(&self) -> Area {
         let Area(min, max) = self;
         Area(
             EMPTY_POINT,
