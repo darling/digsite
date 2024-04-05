@@ -14,10 +14,6 @@ use socketioxide::{
 use tracing::info;
 use tracing_subscriber::FmtSubscriber;
 
-use crate::game::digsites::DigSite;
-
-pub mod game;
-
 fn on_connect(socket: SocketRef) {
     if let Some(query) = socket.extensions.get::<Connection>() {
         info!(
@@ -67,7 +63,7 @@ async fn auth_socket_middleware(s: SocketRef) -> Result<()> {
     let client = Client::new();
 
     let mut headers = HeaderMap::new();
-    headers.insert(AUTHORIZATION, HeaderValue::from_str(&auth_header)?);
+    headers.insert(AUTHORIZATION, HeaderValue::from_str(auth_header)?);
 
     let user = client
         .get("https://discord.com/api/users/@me")
@@ -82,7 +78,7 @@ async fn auth_socket_middleware(s: SocketRef) -> Result<()> {
 
     s.extensions.insert(user);
 
-    return Ok(());
+    Ok(())
 }
 
 #[derive(Debug, Serialize, Deserialize)]
