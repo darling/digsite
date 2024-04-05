@@ -13,20 +13,6 @@ use super::{
 /// inclusive, ie, for counting the number of cells: convert into a [Size].
 pub struct Area(pub Point, pub Point);
 
-trait AreaMethods {
-    fn tuple(&self) -> (Point, Point);
-    fn contains(&self, p: Point) -> bool;
-    fn normalized(&self) -> Area;
-    fn point_from_pos(&self, pos: usize) -> Point;
-    fn intersecting_area(&self, a: Area) -> Area;
-}
-
-impl fmt::Display for Area {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({}, {})", self.0, self.1)
-    }
-}
-
 impl Area {
     /// Calculate the box area around a given point. Radius of 1 => 3x3 Area
     pub fn around_point(p: Point, radius: usize) -> Area {
@@ -42,17 +28,13 @@ impl Area {
         )
     }
 
-    fn tuple(&self) -> (Point, Point) {
-        (self.0, self.1)
-    }
-
     pub fn contains(&self, p: Point) -> bool {
-        let (min, max) = self.tuple();
+        let Area(min, max) = self;
         p.x >= min.x && p.x <= max.x && p.y >= min.y && p.y <= max.y
     }
 
     pub fn normalized(&self) -> Area {
-        let (min, max) = self.tuple();
+        let Area(min, max) = self;
         Area(
             EMPTY_POINT,
             Point {
@@ -63,7 +45,7 @@ impl Area {
     }
 
     pub fn point_from_pos(self, pos: usize) -> Point {
-        let n: Size = self.into();
+        let n = Size::from(self);
         Point {
             x: pos % n.x,
             y: pos / n.x,
@@ -81,6 +63,12 @@ impl Area {
                 y: self.1.y.min(a.1.y),
             },
         )
+    }
+}
+
+impl fmt::Display for Area {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({}, {})", self.0, self.1)
     }
 }
 
