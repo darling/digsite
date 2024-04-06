@@ -5,6 +5,8 @@ use std::{
     usize,
 };
 
+static SPACING: usize = 2;
+
 use serde::{Deserialize, Serialize};
 
 use crate::geometry::{Area, Point, Size};
@@ -46,7 +48,7 @@ impl Cell {
 
 impl fmt::Display for Cell {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.t.symbol())
+        write!(f, "|{:>width$} ", self.t.symbol(), width = SPACING)
     }
 }
 
@@ -179,20 +181,40 @@ impl DigSite {
     }
 
     pub fn print(&self) {
+        let mut first:bool = false;
+
+        let mut line = String::from("");
+        vec![0; self.dimensions.x*(SPACING+2)]
+        .iter()
+        .enumerate()
+        .for_each(|(_, _)| {
+            line.push('-');
+        });
+
         println!("{}", self.dimensions);
-        print!("  ");
+        for _ in 0..=SPACING {
+            print!(" ");
+        }
         vec![0; self.dimensions.x]
             .iter()
             .enumerate()
             .for_each(|(i, _)| {
-                print!("{} ", i);
+                print!("{:>width$}  ", i, width = SPACING);
+                // print!("|");
             });
         self.board.iter().enumerate().for_each(|(i, cell)| {
             let is_new_row = i % self.dimensions.x == 0;
             if is_new_row {
-                print!("\n{} ", i / self.dimensions.x);
+                if !first {
+                    print!("\n   {}", line);
+                    first = true;
+                } else {
+                    print!("|\n   {}", line);
+                }
+                print!("\n{:<width$}", i / self.dimensions.x, width = SPACING);
             }
-            print!("{} ", cell);
-        })
+            print!("{}", cell);
+        });
+        print!("|\n   {}", line);
     }
 }
