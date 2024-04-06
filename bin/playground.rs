@@ -1,5 +1,8 @@
 use anyhow::{Ok, Result};
-use digsite::game::digsites::DigSite;
+use digsite::{
+    game::digsites::DigSite,
+    geometry::{Point, Size},
+};
 use rand::{prelude::*, rngs};
 
 fn main() -> Result<()> {
@@ -7,10 +10,9 @@ fn main() -> Result<()> {
 }
 
 fn test() -> Result<()> {
-    let mut ds = DigSite::new(10, 10, 15, 5, 5);
-
     let mut rng = rngs::StdRng::from_entropy();
-    ds.assign_bones(&mut rng)?;
+
+    let ds = DigSite::generate(&mut rng, Size { x: 10, y: 10 }, 10, Point { x: 5, y: 5 })?;
 
     ds.print();
 
