@@ -1,18 +1,22 @@
 use anyhow::{anyhow, bail, Ok, Result};
+use bitvec::vec::BitVec;
 use rand::{prelude::*, seq::index::sample};
-use std::{fmt, usize};
+use std::{
+    fmt::{self, Debug},
+    usize,
+};
 
 use serde::{Deserialize, Serialize};
 
 use crate::geometry::{Area, Point, Size};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
-enum CellType {
+enum Cell {
     Bone,
     Empty(u8),
 }
 
-impl CellType {
+impl Cell {
     fn symbol(&self) -> String {
         match self {
             Self::Empty(v) => match v {
@@ -24,31 +28,9 @@ impl CellType {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-struct Cell {
-    pos: usize,
-    t: CellType,
-}
-
-impl Cell {
-    fn new(t: CellType, pos: usize) -> Self {
-        Cell { t, pos }
-    }
-
-    fn set_pos(mut self, pos: usize) -> Self {
-        self.pos = pos;
-        self
-    }
-
-    fn set_type(mut self, t: CellType) -> Self {
-        self.t = t;
-        self
-    }
-}
-
 impl fmt::Display for Cell {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.t.symbol())
+        write!(f, "{}", self.symbol())
     }
 }
 
@@ -61,28 +43,45 @@ type Board = Vec<Cell>;
 pub struct DigSite {
     dimensions: Size,
     board: Board,
+    state: BitVec,
 }
 
 impl DigSite {
+    fn symbol_at(&self, index: usize) -> Option<String> {
+        let visibility = *self.state.get(index)?;
+
+        if !visibility {
+            Some("#".to_string())
+        } else {
+            let point = Area::from(self.dimensions).point_from_pos(index);
+            let cell = self.get(point)?;
+            Some(format!("{}", cell))
+        }
+    }
+
     fn size(&self) -> usize {
         self.dimensions.count()
     }
 
     /// Initialize all the cells in the board with empty states and positions
-    fn build_board(cell_count: usize) -> Board {
-        (0..cell_count)
-            .map(|i| Cell {
-                t: CellType::Empty(0),
-                pos: i,
-            })
-            .collect()
+    fn build_board(count: usize) -> Board {
+        vec![Cell::Empty(0); count]
+    }
+
+    fn build_state(count: usize) -> BitVec {
+        BitVec::from_vec(vec![0; count])
     }
 
     pub fn new(size: Size) -> Self {
-        let board = DigSite::build_board(size.count());
+        let count = size.count();
+
+        let board = DigSite::build_board(count);
+        let state = DigSite::build_state(count);
+
         DigSite {
             dimensions: size,
             board,
+            state,
         }
     }
 
@@ -95,10 +94,13 @@ impl DigSite {
         let mut ds = DigSite::new(size);
 
         ds.board = DigSite::build_board(ds.dimensions.count());
+        ds.state = DigSite::build_state(ds.dimensions.count());
 
         ds.clear_cell_state()
             .generate_bones(rng, bones, initial_pos)?
             .apply_cell_state()?;
+
+        ds.flood_fill_visibility(initial_pos)?;
 
         Ok(ds)
     }
@@ -107,23 +109,20 @@ impl DigSite {
         Area::from(self.dimensions).contains(p)
     }
 
-    fn get(&self, p: Point) -> Result<Cell> {
-        if !self.in_bounds(p) {
-            bail!("tried to get cell out of range")
-        }
+    fn pos_from_point(&self, p: Point) -> usize {
+        p.y * self.dimensions.x + p.x
+    }
 
-        self.board
-            .get(p.y * self.dimensions.x + p.x)
-            .copied()
-            .ok_or_else(|| anyhow!("out of range"))
+    fn get(&self, p: Point) -> Option<Cell> {
+        self.board.get(self.pos_from_point(p)).copied()
     }
 
     fn set(&mut self, p: Point, c: Cell) -> Result<()> {
         if !self.in_bounds(p) {
             bail!("tried to set cell out of range")
         }
-        let index = p.y * self.dimensions.x + p.x; // Set the position of the cell
-        self.board[index] = c.set_pos(index);
+        let index = self.pos_from_point(p);
+        self.board[index] = c;
         Ok(())
     }
 
@@ -148,16 +147,15 @@ impl DigSite {
                 continue;
             }
 
-            let cell = self.get(point)?;
+            let cell = self.get(point).ok_or(anyhow!("placed bone out of range"))?;
 
             self.set(
                 point,
-                match cell.t {
-                    CellType::Bone => cell,
-                    CellType::Empty(_) => {
-                        placed_bones += 1;
-                        Cell::new(CellType::Bone, position)
-                    }
+                if matches!(cell, Cell::Empty(_)) {
+                    placed_bones += 1;
+                    Cell::Bone
+                } else {
+                    cell
                 },
             )?;
 
@@ -172,16 +170,55 @@ impl DigSite {
                 let local_point = bca_normal.point_from_pos(pos);
                 let board_point = local_point + bone_cell_offset;
 
-                match self.get(board_point)?.t {
-                    CellType::Bone => continue,
-                    CellType::Empty(v) => {
-                        self.set(board_point, Cell::new(CellType::Empty(v + 1), 0))?
-                    }
+                match self
+                    .get(board_point)
+                    .ok_or(anyhow!("accessing area around bone inaccessable"))?
+                {
+                    Cell::Bone => continue,
+                    Cell::Empty(v) => self.set(board_point, Cell::Empty(v + 1))?,
                 }
             }
         }
 
         Ok(())
+    }
+
+    fn flood_fill_visibility(&mut self, p: Point) -> Result<()> {
+        let index = self.pos_from_point(p);
+
+        let cell = self
+            .get(p)
+            .ok_or(anyhow!("Board is not synced with expected state size"))?;
+
+        if index >= self.state.len() {
+            bail!("State is not synced with expected board size");
+        }
+
+        if self.state[index] {
+            return Ok(());
+        }
+
+        self.state.set(index, true);
+
+        if matches!(cell, Cell::Empty(0)) {
+            let dim_area = Area::from(self.dimensions);
+            let flood_area = dim_area.intersecting_area(Area::around_point(p, 1));
+
+            let cell_count = Size::from(flood_area).count();
+            let area_normalized = flood_area.normalize();
+            let area_offset = flood_area.0;
+
+            for pos in 0..cell_count {
+                let local_point = area_normalized.point_from_pos(pos);
+                let board_point = local_point + area_offset;
+                self.flood_fill_visibility(board_point)?;
+            }
+
+            Ok(())
+        } else {
+            // just leave alone
+            Ok(())
+        }
     }
 
     /// Distributes a specified number of bones around the map, avoiding the immediate area around the initial position.
@@ -201,7 +238,7 @@ impl DigSite {
             .iter()
             .enumerate()
             .filter_map(|(pos, cell)| {
-                let is_empty = matches!(cell.t, CellType::Empty(_));
+                let is_empty = matches!(cell, Cell::Empty(_));
                 let point = dim_area.point_from_pos(pos);
                 let is_excluded = exclusion_zone.contains(point);
                 if is_empty && !is_excluded {
@@ -220,20 +257,18 @@ impl DigSite {
                 *potential_locations
                     .get(idx)
                     .ok_or(anyhow!("invalid sample"))?,
-                Cell {
-                    t: CellType::Bone,
-                    pos: 0,
-                },
+                Cell::Bone,
             )?;
         }
 
         Ok(self)
     }
+
     /// Any of the scored cells on the board will get their warning score reset to 0
     fn clear_cell_state(&mut self) -> &mut Self {
         self.board.iter_mut().for_each(|c| {
-            if let CellType::Empty(_) = c.t {
-                c.t = CellType::Empty(0)
+            if matches!(c, Cell::Empty(_)) {
+                *c = Cell::Empty(0)
             }
         });
 
@@ -248,9 +283,10 @@ impl DigSite {
         let bones: Vec<_> = self
             .board
             .iter()
-            .filter_map(|c| {
-                if matches!(c.t, CellType::Bone) {
-                    Some(c.pos)
+            .enumerate()
+            .filter_map(|(pos, c)| {
+                if matches!(c, Cell::Bone) {
+                    Some(pos)
                 } else {
                     None
                 }
@@ -270,10 +306,12 @@ impl DigSite {
             for pos in 0..cell_count {
                 let local_point = bca_normal.point_from_pos(pos);
                 let board_point = local_point + bone_cell_offset;
-                let target_cell = self.get(board_point)?;
+                let target_cell = self
+                    .get(board_point)
+                    .ok_or(anyhow!("accessing area around bone oob"))?;
 
-                if let CellType::Empty(v) = target_cell.t {
-                    self.set(board_point, target_cell.set_type(CellType::Empty(v + 1)))?;
+                if let Cell::Empty(v) = target_cell {
+                    self.set(board_point, Cell::Empty(v + 1))?;
                 }
             }
         }
@@ -290,12 +328,12 @@ impl DigSite {
             .for_each(|(i, _)| {
                 print!("{} ", i);
             });
-        self.board.iter().enumerate().for_each(|(i, cell)| {
+        self.board.iter().enumerate().for_each(|(i, _)| {
             let is_new_row = i % self.dimensions.x == 0;
             if is_new_row {
                 print!("\n{} ", i / self.dimensions.x);
             }
-            print!("{} ", cell);
+            print!("{} ", self.symbol_at(i).unwrap_or("?".to_string()));
         })
     }
 }

@@ -12,8 +12,7 @@ fn main() -> Result<()> {
 fn test() -> Result<()> {
     let mut rng = rngs::StdRng::from_entropy();
 
-    let ds = DigSite::generate(&mut rng, Size { x: 10, y: 10 }, 10, Point { x: 5, y: 5 })?;
-
+    let ds = DigSite::generate(&mut rng, Size { x: 10, y: 10 }, 20, Point { x: 5, y: 5 })?;
     ds.print();
 
     Ok(())
