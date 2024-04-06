@@ -5,6 +5,8 @@ use std::{
     usize,
 };
 
+static SPACING: usize = 3;
+
 use serde::{Deserialize, Serialize};
 
 use crate::geometry::{Area, Point, Size};
@@ -46,7 +48,7 @@ impl Cell {
 
 impl fmt::Display for Cell {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.t.symbol())
+        write!(f, "{:<width$}", self.t.symbol(), width = SPACING + 1)
     }
 }
 
@@ -180,19 +182,19 @@ impl DigSite {
 
     pub fn print(&self) {
         println!("{}", self.dimensions);
-        print!("  ");
+        print!("   ");
         vec![0; self.dimensions.x]
             .iter()
             .enumerate()
             .for_each(|(i, _)| {
-                print!("{} ", i);
+                print!("{:>width$} ", i, width = SPACING);
             });
         self.board.iter().enumerate().for_each(|(i, cell)| {
             let is_new_row = i % self.dimensions.x == 0;
             if is_new_row {
-                print!("\n{} ", i / self.dimensions.x);
+                print!("\n{:>width$}  ", i / self.dimensions.x, width = SPACING);
             }
-            print!("{} ", cell);
+            print!("{}", cell);
         })
     }
 }
