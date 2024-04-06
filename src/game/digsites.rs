@@ -354,7 +354,7 @@ impl DigSite {
                 }
                 print!("\n{:<width$}", i / self.dimensions.x, width = SPACING);
             }
-            print!("{} ", self.symbol_at(i).unwrap_or("?".to_string()));
+            print!("| {} ", self.symbol_at(i).unwrap_or("?".to_string()));
         });
         print!("|\n   {}", line);
     }
