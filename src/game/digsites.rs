@@ -2,11 +2,10 @@ use anyhow::{anyhow, bail, Ok, Result};
 use bitvec::vec::BitVec;
 use rand::{prelude::*, seq::index::sample};
 use std::{
+    collections::HashMap,
     fmt::{self, Debug},
     usize,
 };
-
-static SPACING: usize = 2;
 
 use serde::{Deserialize, Serialize};
 
@@ -39,6 +38,13 @@ impl fmt::Display for Cell {
 type Board = Vec<Cell>;
 
 #[derive(Debug, Serialize, Deserialize)]
+struct Player {
+    symbol: char,
+    pos: Point,
+}
+type Players = HashMap<char, Player>;
+
+#[derive(Debug, Serialize, Deserialize)]
 /// Digsite is a complete structure around the game board and state.
 /// It contains the board, the dimensions, the initial position and the bones. Anything needed to
 /// know during a run for a player.
@@ -46,6 +52,9 @@ pub struct DigSite {
     dimensions: Size,
     board: Board,
     state: BitVec,
+
+    players: Players,
+    spawn_pos: Option<Point>,
 }
 
 impl DigSite {
@@ -79,11 +88,14 @@ impl DigSite {
 
         let board = DigSite::build_board(count);
         let state = DigSite::build_state(count);
+        let players = HashMap::new();
 
         DigSite {
             dimensions: size,
             board,
             state,
+            players,
+            spawn_pos: None,
         }
     }
 
@@ -92,8 +104,11 @@ impl DigSite {
         size: Size,
         bones: usize,
         initial_pos: Point,
+        players: Option<Vec<char>>,
     ) -> Result<Self> {
         let mut ds = DigSite::new(size);
+
+        ds.spawn_pos = Some(initial_pos);
 
         ds.board = DigSite::build_board(ds.dimensions.count());
         ds.state = DigSite::build_state(ds.dimensions.count());
@@ -104,7 +119,33 @@ impl DigSite {
 
         ds.flood_fill_visibility(initial_pos)?;
 
+        if let Some(players) = players {
+            for player in players {
+                ds.add_player(player)?;
+            }
+        }
+
         Ok(ds)
+    }
+
+    fn add_player(&mut self, symbol: char) -> Result<()> {
+        // TODO: Change this to adapt for upcoming changed player schema
+        self.players.entry(symbol).or_insert(Player {
+            symbol,
+            pos: self.spawn_pos.ok_or(anyhow!(
+                "no spawn point provided. was the board generated correctly?"
+            ))?,
+        });
+
+        Ok(())
+    }
+
+    pub fn move_player(&mut self, symbol: char, p: Point) {
+        if self.in_bounds(p) {
+            self.players
+                .entry(symbol)
+                .and_modify(|player| player.pos = p);
+        }
     }
 
     fn in_bounds(&self, p: Point) -> bool {
@@ -112,7 +153,7 @@ impl DigSite {
     }
 
     fn pos_from_point(&self, p: Point) -> usize {
-        p.y * self.dimensions.x + p.x
+        p.y as usize * self.dimensions.x + p.x as usize
     }
 
     fn get(&self, p: Point) -> Option<Cell> {
@@ -321,41 +362,58 @@ impl DigSite {
         Ok(self)
     }
 
-    pub fn print(&self) {
-        let mut first: bool = false;
+    fn output(&self) -> Vec<Vec<String>> {
+        // Layout board
+        let mut cells: Vec<_> = (0..self.size())
+            .map(|i| self.symbol_at(i).unwrap_or(String::from("?")))
+            .collect();
 
-        let mut line = String::from("");
-        vec![0; self.dimensions.x * (SPACING + 2)]
-            .iter()
-            .enumerate()
-            .for_each(|(_, _)| {
-                line.push('-');
-            });
-
-        println!("{}", self.dimensions);
-        for _ in 0..=SPACING {
-            print!(" ");
+        // Place players
+        for player in self.players.values() {
+            let pos = self.pos_from_point(player.pos);
+            cells[pos] = player.symbol.to_string();
         }
-        vec![0; self.dimensions.x]
-            .iter()
-            .enumerate()
-            .for_each(|(i, _)| {
-                print!("{:>width$}  ", i, width = SPACING);
-                // print!("|");
-            });
-        self.board.iter().enumerate().for_each(|(i, _)| {
-            let is_new_row = i % self.dimensions.x == 0;
-            if is_new_row {
-                if !first {
-                    print!("\n   {}", line);
-                    first = true;
-                } else {
-                    print!("|\n   {}", line);
-                }
-                print!("\n{:<width$}", i / self.dimensions.x, width = SPACING);
-            }
-            print!("| {} ", self.symbol_at(i).unwrap_or("?".to_string()));
-        });
-        print!("|\n   {}", line);
+
+        // Pack everything into 2d vec
+        cells
+            .chunks(self.dimensions.x)
+            .map(|r| Vec::from(r))
+            .collect()
+    }
+
+    pub fn print(&self) {
+        let data = self.output();
+
+        let max_col_w = self.dimensions.x.saturating_sub(1).to_string().len();
+        let max_row_w = self.dimensions.y.saturating_sub(1).to_string().len();
+
+        let header = format!(
+            "{:max_row_w$} {}",
+            "",
+            (0..self.dimensions.x).fold(String::new(), |acc, n| format!(
+                "{}{:max_col_w$} ",
+                acc,
+                n,
+                max_col_w = max_col_w
+            )),
+            max_row_w = max_row_w
+        );
+
+        println!("{}", header);
+
+        for (y, row) in data.iter().enumerate() {
+            println!(
+                "{:max_row_w$}{}",
+                y,
+                row.iter().fold(String::new(), |acc, symbol| {
+                    format!("{} {:max_col_w$}", acc, symbol, max_col_w = max_col_w)
+                }),
+                max_row_w = max_row_w
+            )
+        }
+
+        for player in self.players.values() {
+            println!("{}: {}", player.symbol, player.pos);
+        }
     }
 }

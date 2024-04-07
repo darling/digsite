@@ -18,12 +18,12 @@ impl Area {
     pub fn around_point(p: Point, radius: usize) -> Area {
         Area(
             Point {
-                x: p.x.saturating_sub(radius),
-                y: p.y.saturating_sub(radius),
+                x: p.x.saturating_sub(radius as i32),
+                y: p.y.saturating_sub(radius as i32),
             },
             Point {
-                x: p.x.saturating_add(radius),
-                y: p.y.saturating_add(radius),
+                x: p.x.saturating_add(radius as i32),
+                y: p.y.saturating_add(radius as i32),
             },
         )
     }
@@ -47,8 +47,8 @@ impl Area {
     pub fn point_from_pos(self, pos: usize) -> Point {
         let n = Size::from(self);
         Point {
-            x: pos % n.x,
-            y: pos / n.x,
+            x: (pos % n.x) as i32,
+            y: (pos / n.x) as i32,
         }
     }
 

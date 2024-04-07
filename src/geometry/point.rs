@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{
+    fmt::{self, Display},
+    ops::Add,
+};
 
 use super::Size;
 
@@ -8,13 +11,13 @@ use super::Size;
 ///
 /// Note: Points are positive only
 pub struct Point {
-    pub x: usize,
-    pub y: usize,
+    pub x: i32,
+    pub y: i32,
 }
 
 pub const EMPTY_POINT: Point = Point { x: 0, y: 0 };
 
-impl fmt::Display for Point {
+impl Display for Point {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "({},{})", self.x, self.y)
     }
@@ -23,13 +26,13 @@ impl fmt::Display for Point {
 impl From<Size> for Point {
     fn from(value: Size) -> Self {
         Point {
-            x: value.x.saturating_sub(1),
-            y: value.y.saturating_sub(1),
+            x: value.x.saturating_sub(1) as i32,
+            y: value.y.saturating_sub(1) as i32,
         }
     }
 }
 
-impl std::ops::Add for Point {
+impl Add for Point {
     type Output = Point;
     fn add(self, p: Point) -> Point {
         Point {
