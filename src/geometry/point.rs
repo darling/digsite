@@ -34,10 +34,11 @@ impl From<Size> for Point {
 
 impl Add for Point {
     type Output = Point;
+
     fn add(self, p: Point) -> Point {
         Point {
-            x: self.x.saturating_add(p.x),
-            y: self.y.saturating_add(p.y),
+            x: self.x.wrapping_add(p.x),
+            y: self.y.wrapping_add(p.y),
         }
     }
 }

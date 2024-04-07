@@ -21,7 +21,7 @@ impl Cell {
     fn symbol(&self) -> String {
         match self {
             Self::Empty(v) => match v {
-                0 => ".".to_string(),
+                0 => " ".to_string(),
                 _ => format!("{}", v),
             },
             Self::Bone => "b".to_string(),
@@ -37,7 +37,7 @@ impl fmt::Display for Cell {
 
 type Board = Vec<Cell>;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 struct Player {
     symbol: char,
     pos: Point,
@@ -60,14 +60,13 @@ pub struct DigSite {
 impl DigSite {
     fn symbol_at(&self, index: usize) -> Option<String> {
         let visibility = *self.state.get(index)?;
-
-        if !visibility {
-            Some("#".to_string())
-        } else {
+        Some(if visibility {
             let point = Area::from(self.dimensions).point_from_pos(index);
             let cell = self.get(point)?;
-            Some(format!("{}", cell))
-        }
+            format!("{}", cell)
+        } else {
+            "#".to_string()
+        })
     }
 
     fn size(&self) -> usize {
@@ -140,12 +139,33 @@ impl DigSite {
         Ok(())
     }
 
-    pub fn move_player(&mut self, symbol: char, p: Point) {
-        if self.in_bounds(p) {
-            self.players
-                .entry(symbol)
-                .and_modify(|player| player.pos = p);
+    pub fn move_player(&mut self, symbol: char, p: Point) -> Result<()> {
+        self.players.entry(symbol).and_modify(|player| {
+            player.pos = Area::from(self.dimensions).clamp_point(player.pos + p)
+        });
+
+        self.step()
+    }
+
+    /// Step the game forward. Run checks and win-conditions or calculate whatevers needed.
+    fn step(&mut self) -> Result<()> {
+        let players: Vec<_> = self.players.values().map(|p| p.pos).collect();
+        for pos in players {
+            if self
+                .is_hidden(pos)
+                .ok_or(anyhow!("unable to tell if player position is valid"))?
+            {
+                self.flood_fill_visibility(pos)?;
+            }
         }
+
+        Ok(())
+    }
+
+    fn is_hidden(&self, p: Point) -> Option<bool> {
+        let pos = self.pos_from_point(p);
+        let spot = *self.state.get(pos)?;
+        Some(!spot)
     }
 
     fn in_bounds(&self, p: Point) -> bool {
@@ -375,10 +395,7 @@ impl DigSite {
         }
 
         // Pack everything into 2d vec
-        cells
-            .chunks(self.dimensions.x)
-            .map(|r| Vec::from(r))
-            .collect()
+        cells.chunks(self.dimensions.x).map(Vec::from).collect()
     }
 
     pub fn print(&self) {

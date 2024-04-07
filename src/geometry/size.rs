@@ -31,8 +31,8 @@ impl From<Area> for Size {
     fn from(a: Area) -> Self {
         let n = a.normalize();
         Size {
-            x: n.1.x.saturating_add(1).abs() as usize,
-            y: n.1.y.saturating_add(1).abs() as usize,
+            x: n.1.x.saturating_add(1).unsigned_abs() as usize,
+            y: n.1.y.saturating_add(1).unsigned_abs() as usize,
         }
     }
 }

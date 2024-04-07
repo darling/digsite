@@ -1,6 +1,6 @@
 use std::{env, io, process::Command};
 
-use anyhow::{Ok, Result};
+use anyhow::Result;
 use digsite::{
     game::digsites::DigSite,
     geometry::{point::EMPTY_POINT, Point, Size},
@@ -39,8 +39,8 @@ fn test() -> Result<()> {
         clear_terminal();
         ds.print();
 
-        match io::stdin().read_line(&mut input) {
-            Result::Ok(_) => ds.move_player(
+        if io::stdin().read_line(&mut input).is_ok() {
+            ds.move_player(
                 'C',
                 match input.trim().to_lowercase().as_str() {
                     "w" => Point { x: 0, y: -1 },
@@ -49,10 +49,9 @@ fn test() -> Result<()> {
                     "d" => Point { x: 1, y: 0 },
                     _ => EMPTY_POINT,
                 },
-            ),
-            _ => {}
+            )?
         }
-    }
 
-    Ok(())
+        input.clear();
+    }
 }

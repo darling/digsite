@@ -64,6 +64,13 @@ impl Area {
             },
         )
     }
+
+    pub fn clamp_point(&self, p: Point) -> Point {
+        Point {
+            x: p.x.max(self.0.x).min(self.1.x),
+            y: p.y.max(self.0.y).min(self.1.y),
+        }
+    }
 }
 
 impl fmt::Display for Area {
