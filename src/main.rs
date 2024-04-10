@@ -53,6 +53,7 @@ async fn main() -> Result<()> {
         .build_layer();
 
     io.ns("/", on_connect.with(auth_socket_middleware));
+    io.ns("/api/backend", on_connect.with(auth_socket_middleware));
 
     let app = axum::Router::new()
         .route("/", get(|| async { "Hello, World!" }))
