@@ -37,12 +37,12 @@ impl fmt::Display for Cell {
 
 type Board = Vec<Cell>;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct Player {
-    symbol: char,
+    id: String,
     pos: Point,
 }
-type Players = HashMap<char, Player>;
+type Players = HashMap<String, Player>;
 
 #[derive(Debug, Serialize, Deserialize)]
 /// Digsite is a complete structure around the game board and state.
@@ -55,6 +55,19 @@ pub struct DigSite {
 
     players: Players,
     spawn_pos: Option<Point>,
+}
+
+#[derive(Debug, Serialize, Clone, Copy)]
+enum CellState {
+    Visible(Cell),
+    Hidden,
+}
+
+/// Use a seperate struct to output the state of the board for players to parse on the frontend.
+#[derive(Debug, Serialize, Clone)]
+pub struct DigSiteOutput {
+    board: Vec<Vec<CellState>>,
+    players: Players,
 }
 
 impl DigSite {
@@ -103,7 +116,6 @@ impl DigSite {
         size: Size,
         bones: usize,
         initial_pos: Point,
-        players: Option<Vec<char>>,
     ) -> Result<Self> {
         let mut ds = DigSite::new(size);
 
@@ -118,19 +130,13 @@ impl DigSite {
 
         ds.flood_fill_visibility(initial_pos)?;
 
-        if let Some(players) = players {
-            for player in players {
-                ds.add_player(player)?;
-            }
-        }
-
         Ok(ds)
     }
 
-    fn add_player(&mut self, symbol: char) -> Result<()> {
+    pub fn add_player(&mut self, id: String) -> Result<()> {
         // TODO: Change this to adapt for upcoming changed player schema
-        self.players.entry(symbol).or_insert(Player {
-            symbol,
+        self.players.entry(id.clone()).or_insert(Player {
+            id,
             pos: self.spawn_pos.ok_or(anyhow!(
                 "no spawn point provided. was the board generated correctly?"
             ))?,
@@ -139,8 +145,8 @@ impl DigSite {
         Ok(())
     }
 
-    pub fn move_player(&mut self, symbol: char, p: Point) -> Result<()> {
-        self.players.entry(symbol).and_modify(|player| {
+    pub fn move_player(&mut self, id: String, p: Point) -> Result<()> {
+        self.players.entry(id).and_modify(|player| {
             player.pos = Area::from(self.dimensions).clamp_point(player.pos + p)
         });
 
@@ -382,24 +388,46 @@ impl DigSite {
         Ok(self)
     }
 
-    fn output(&self) -> Vec<Vec<String>> {
-        // Layout board
+    pub fn output(&self) -> DigSiteOutput {
+        let dim_area = Area::from(self.dimensions);
+
+        let board = self
+            .board
+            .iter()
+            .enumerate()
+            .map(|(i, cell)| {
+                if let Some(is_hidden) = self.is_hidden(dim_area.point_from_pos(i)) {
+                    if is_hidden {
+                        CellState::Hidden
+                    } else {
+                        CellState::Visible(*cell)
+                    }
+                } else {
+                    CellState::Hidden
+                }
+            })
+            .collect::<Vec<_>>()
+            .chunks(self.dimensions.x)
+            .map(Vec::from)
+            .collect();
+
+        DigSiteOutput {
+            players: self.players.clone(),
+            board,
+        }
+    }
+
+    pub fn print(&self) {
         let mut cells: Vec<_> = (0..self.size())
             .map(|i| self.symbol_at(i).unwrap_or(String::from("?")))
             .collect();
 
-        // Place players
         for player in self.players.values() {
             let pos = self.pos_from_point(player.pos);
-            cells[pos] = player.symbol.to_string();
+            cells[pos] = "B".to_string();
         }
 
-        // Pack everything into 2d vec
-        cells.chunks(self.dimensions.x).map(Vec::from).collect()
-    }
-
-    pub fn print(&self) {
-        let data = self.output();
+        let data: Vec<_> = cells.chunks(self.dimensions.x).map(Vec::from).collect();
 
         let max_col_w = self.dimensions.x.saturating_sub(1).to_string().len();
         let max_row_w = self.dimensions.y.saturating_sub(1).to_string().len();
@@ -430,7 +458,7 @@ impl DigSite {
         }
 
         for player in self.players.values() {
-            println!("{}: {}", player.symbol, player.pos);
+            println!("{}: {}", player.id, player.pos);
         }
     }
 }

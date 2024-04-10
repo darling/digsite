@@ -1,56 +1,18 @@
+use socketioxide::handler::ConnectHandler;
+
 use anyhow::{anyhow, Ok, Result};
 use axum::{
     http::{HeaderMap, HeaderValue},
     routing::get,
 };
-use reqwest::{header::AUTHORIZATION, Client};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use socketioxide::{
-    extract::{Bin, Data, SocketRef},
-    handler::ConnectHandler,
-    SocketIo,
+use digsite::websocket::{
+    lifecycle::on_connect,
+    state::{Connection, ConnectionQueryString, DiscordUser, Parties},
 };
+use reqwest::{header::AUTHORIZATION, Client};
+use socketioxide::{extract::SocketRef, SocketIo};
 use tracing::info;
 use tracing_subscriber::FmtSubscriber;
-
-fn on_connect(socket: SocketRef) {
-    if let Some(query) = socket.extensions.get::<Connection>() {
-        info!(
-            "Socket.IO connected: {:?} {:?} {:?}",
-            socket.ns(),
-            socket.id,
-            query.iid
-        );
-
-        // add the user to the room of their iid if possible
-        let _ = socket.join(query.iid.clone());
-
-        // TODO: Sync the user with the room's information
-
-        socket.on(
-            "message",
-            |socket: SocketRef, Data::<Value>(data), Bin(bin)| {
-                info!("Received event: {:?} {:?}", data, bin);
-                socket.bin(bin).emit("message-back", data).ok();
-            },
-        );
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct DiscordUser {
-    id: String,
-    username: String,
-    global_name: Option<String>,
-    avatar: Option<String>,
-}
-
-impl DiscordUser {
-    fn name(&self) -> String {
-        return self.global_name.as_ref().unwrap_or(&self.username).clone();
-    }
-}
 
 async fn auth_socket_middleware(s: SocketRef) -> Result<()> {
     let auth_header = s
@@ -76,24 +38,15 @@ async fn auth_socket_middleware(s: SocketRef) -> Result<()> {
 
     info!("Hello, {}!", user.name());
 
-    s.extensions.insert(user);
-
-    Ok(())
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Connection {
-    iid: String,
-}
-
-fn shape_middleware(s: SocketRef) -> Result<()> {
     let qs = s
         .req_parts()
         .uri
         .query()
         .ok_or_else(|| anyhow!("uri contains invalid query string"))?;
 
-    s.extensions.insert(serde_qs::from_str::<Connection>(qs)?);
+    let cqs = serde_qs::from_str::<ConnectionQueryString>(qs)?;
+
+    s.extensions.insert(Connection::new(cqs, user));
 
     Ok(())
 }
@@ -102,14 +55,11 @@ fn shape_middleware(s: SocketRef) -> Result<()> {
 async fn main() -> Result<()> {
     tracing::subscriber::set_global_default(FmtSubscriber::default())?;
 
-    let (layer, io) = SocketIo::new_layer();
+    let (layer, io) = SocketIo::builder()
+        .with_state::<Parties>(Parties::new())
+        .build_layer();
 
-    io.ns(
-        "/",
-        on_connect
-            .with(auth_socket_middleware)
-            .with(shape_middleware),
-    );
+    io.ns("/", on_connect.with(auth_socket_middleware));
 
     let app = axum::Router::new()
         .route("/", get(|| async { "Hello, World!" }))
