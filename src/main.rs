@@ -15,17 +15,18 @@ use tracing::info;
 use tracing_subscriber::FmtSubscriber;
 
 async fn auth_socket_middleware(s: SocketRef) -> Result<()> {
-    let auth_header = s
+    let qs = s
         .req_parts()
-        .headers
-        .get("Authorization")
-        .ok_or_else(|| anyhow!("invalid headers"))?
-        .to_str()?;
+        .uri
+        .query()
+        .ok_or_else(|| anyhow!("uri contains invalid query string"))?;
+
+    let cqs = serde_qs::from_str::<ConnectionQueryString>(qs)?;
 
     let client = Client::new();
 
     let mut headers = HeaderMap::new();
-    headers.insert(AUTHORIZATION, HeaderValue::from_str(auth_header)?);
+    headers.insert(AUTHORIZATION, HeaderValue::from_str(&cqs.bearer_token())?);
 
     let user = client
         .get("https://discord.com/api/users/@me")
@@ -37,14 +38,6 @@ async fn auth_socket_middleware(s: SocketRef) -> Result<()> {
         .await?;
 
     info!("Hello, {}!", user.name());
-
-    let qs = s
-        .req_parts()
-        .uri
-        .query()
-        .ok_or_else(|| anyhow!("uri contains invalid query string"))?;
-
-    let cqs = serde_qs::from_str::<ConnectionQueryString>(qs)?;
 
     s.extensions.insert(Connection::new(cqs, user));
 
@@ -65,13 +58,14 @@ async fn main() -> Result<()> {
         .route("/", get(|| async { "Hello, World!" }))
         .layer(layer);
 
-    info!("Starting server");
-
     let port = std::env::var("PORT").unwrap_or("3000".to_string());
 
     let listener = tokio::net::TcpListener::bind(String::from("0.0.0.0:") + &port)
         .await
         .unwrap();
+
+    info!("Starting server on port 0.0.0.0:{}", port);
+
     axum::serve(listener, app).await.unwrap();
 
     Ok(())

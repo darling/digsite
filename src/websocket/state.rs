@@ -40,6 +40,13 @@ impl DiscordUser {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConnectionQueryString {
     iid: String,
+    aut: String,
+}
+
+impl ConnectionQueryString {
+    pub fn bearer_token(&self) -> String {
+        String::from("Bearer ") + &self.aut.to_string()
+    }
 }
 
 pub struct Parties(Arc<DashMap<String, Arc<Party>>>);
